@@ -1,12 +1,12 @@
 {
-  "name": "Flappy Plane",
-  "short_name": "Flappy Plane",
-  "description": "A flappy bird-style game with a plane!",
+  "name": "Plane Arcade",
+  "short_name": "Plane Arcade",
+  "description": "A collection of plane games",
   "start_url": ".",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#87CEEB",
-  "theme_color": "#4dc9f6",
+  "orientation": "any",
+  "background_color": "#1a1a2e",
+  "theme_color": "#16213e",
   "icons": [
     {
       "src": "icons/icon-192.png",

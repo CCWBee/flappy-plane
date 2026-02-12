@@ -1,10 +1,12 @@
-const CACHE_NAME = 'flappy-plane-v1';
+const CACHE_NAME = 'plane-arcade-v2';
 const ASSETS = [
   './',
   './index.html',
   './manifest.json',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './flappy/index.html',
+  './tu95/index.html'
 ];
 
 self.addEventListener('install', event => {

@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#4dc9f6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Flappy Plane</title>
+  <link rel="manifest" href="../manifest.json">
+  <link rel="apple-touch-icon" href="../icons/icon-192.png">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      background: #87CEEB;
+      touch-action: none;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+    canvas {
+      display: block;
+      width: 100%; height: 100%;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="game"></canvas>
+  <script>
+    const canvas = document.getElementById('game');
+    const ctx = canvas.getContext('2d');
+
+    // Hi-DPI support
+    function resize() {
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = window.innerWidth * dpr;
+      canvas.height = window.innerHeight * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+    resize();
+    window.addEventListener('resize', resize);
+
+    // Logical dimensions (CSS pixels)
+    function W() { return window.innerWidth; }
+    function H() { return window.innerHeight; }
+
+    // Game constants
+    const GRAVITY = 0.45;
+    const FLAP_POWER = -7;
+    const PIPE_WIDTH = 60;
+    const GAP_SIZE_RATIO = 0.28;
+    const PIPE_SPEED_RATIO = 0.003;
+    const GROUND_HEIGHT = 60;
+
+    // Game state
+    const STATE = { MENU: 0, PLAYING: 1, GAME_OVER: 2 };
+    let state = STATE.MENU;
+    let score = 0;
+    let highScore = parseInt(localStorage.getItem('flappyPlaneHigh') || '0');
+    let frameCount = 0;
+
+    // Plane
+    let plane = { x: 0, y: 0, vel: 0, rotation: 0, width: 42, height: 28 };
+
+    // Obstacles (pipes)
+    let pipes = [];
+    let pipeTimer = 0;
+
+    // Background clouds
+    let clouds = [];
+    for (let i = 0; i < 6; i++) {
+      clouds.push({
+        x: Math.random() * 800,
+        y: 30 + Math.random() * (200),
+        size: 30 + Math.random() * 50,
+        speed: 0.2 + Math.random() * 0.5
+      });
+    }
+
+    // Background buildings
+    let buildings = [];
+    function initBuildings() {
+      buildings = [];
+      let bx = 0;
+      while (bx < W() + 200) {
+        const bw = 40 + Math.random() * 60;
+        const bh = 60 + Math.random() * 120;
+        buildings.push({ x: bx, w: bw, h: bh, color: `hsl(${200 + Math.random()*40}, 15%, ${55 + Math.random()*15}%)` });
+        bx += bw + 5 + Math.random() * 20;
+      }
+    }
+    initBuildings();
+
+    function resetGame() {
+      plane.x = W() * 0.2;
+      plane.y = H() * 0.4;
+      plane.vel = 0;
+      plane.rotation = 0;
+      pipes = [];
+      pipeTimer = 0;
+      score = 0;
+      frameCount = 0;
+    }
+    resetGame();
+
+    function flap() {
+      if (state === STATE.MENU) {
+        state = STATE.PLAYING;
+        resetGame();
+        plane.vel = FLAP_POWER;
+      } else if (state === STATE.PLAYING) {
+        plane.vel = FLAP_POWER;
+      } else if (state === STATE.GAME_OVER && frameCount > 20) {
+        state = STATE.MENU;
+      }
+    }
+
+    // Input
+    canvas.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      // Check if back button was tapped (menu state only)
+      if (state === STATE.MENU) {
+        const bx = 10, by = 10, bw = 90, bh = 32;
+        const rect = canvas.getBoundingClientRect();
+        const cx = e.clientX - rect.left;
+        const cy = e.clientY - rect.top;
+        if (cx >= bx && cx <= bx + bw && cy >= by && cy <= by + bh) {
+          window.location.href = '../';
+          return;
+        }
+      }
+      flap();
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space' || e.code === 'ArrowUp') { e.preventDefault(); flap(); }
+    });
+
+    // Drawing helpers
+    function drawPlane(x, y, rot) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(rot);
+
+      ctx.fillStyle = '#E8E8E8';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, plane.width / 2, plane.height / 2.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#B0B0B0';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+
+      ctx.fillStyle = '#FF6B6B';
+      ctx.beginPath();
+      ctx.moveTo(plane.width / 2 - 2, -3);
+      ctx.lineTo(plane.width / 2 + 8, 0);
+      ctx.lineTo(plane.width / 2 - 2, 3);
+      ctx.fill();
+
+      ctx.fillStyle = '#4A90D9';
+      ctx.beginPath();
+      ctx.moveTo(-5, -2);
+      ctx.lineTo(-12, -plane.height / 1.5);
+      ctx.lineTo(8, -2);
+      ctx.fill();
+      ctx.beginPath();
+      ctx.moveTo(-5, 2);
+      ctx.lineTo(-12, plane.height / 1.5);
+      ctx.lineTo(8, 2);
+      ctx.fill();
+
+      ctx.fillStyle = '#FF6B6B';
+      ctx.beginPath();
+      ctx.moveTo(-plane.width / 2 + 2, 0);
+      ctx.lineTo(-plane.width / 2 - 8, -10);
+      ctx.lineTo(-plane.width / 2 - 2, 0);
+      ctx.lineTo(-plane.width / 2 - 8, 10);
+      ctx.fill();
+
+      ctx.fillStyle = '#87CEEB';
+      ctx.beginPath();
+      ctx.arc(6, -1, 4, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#6BA3C7';
+      ctx.lineWidth = 0.8;
+      ctx.stroke();
+
+      ctx.restore();
+    }
+
+    function drawCloud(x, y, size) {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.7)';
+      ctx.beginPath();
+      ctx.arc(x, y, size * 0.5, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.4, y - size * 0.15, size * 0.4, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.8, y, size * 0.35, 0, Math.PI * 2);
+      ctx.arc(x + size * 0.35, y + size * 0.15, size * 0.3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function drawPipe(px, gapY, gapH) {
+      const w = PIPE_WIDTH;
+      const capH = 20;
+      const capExtra = 8;
+      const groundY = H() - GROUND_HEIGHT;
+
+      const topH = gapY;
+      ctx.fillStyle = '#5CBF5C';
+      ctx.fillRect(px, 0, w, topH);
+      ctx.fillStyle = '#4AAE4A';
+      ctx.fillRect(px - capExtra / 2, topH - capH, w + capExtra, capH);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(px + 4, 0, 8, topH - capH);
+
+      const botY = gapY + gapH;
+      ctx.fillStyle = '#5CBF5C';
+      ctx.fillRect(px, botY, w, groundY - botY);
+      ctx.fillStyle = '#4AAE4A';
+      ctx.fillRect(px - capExtra / 2, botY, w + capExtra, capH);
+      ctx.fillStyle = 'rgba(255,255,255,0.15)';
+      ctx.fillRect(px + 4, botY + capH, 8, groundY - botY - capH);
+    }
+
+    function drawGround() {
+      const groundY = H() - GROUND_HEIGHT;
+      ctx.fillStyle = '#8B6914';
+      ctx.fillRect(0, groundY, W(), GROUND_HEIGHT);
+      ctx.fillStyle = '#4CAF50';
+      ctx.fillRect(0, groundY, W(), 15);
+      ctx.fillStyle = '#66BB6A';
+      const offset = (frameCount * 2) % 30;
+      for (let gx = -offset; gx < W() + 30; gx += 30) {
+        ctx.beginPath();
+        ctx.moveTo(gx, groundY);
+        ctx.lineTo(gx + 15, groundY - 5);
+        ctx.lineTo(gx + 30, groundY);
+        ctx.fill();
+      }
+    }
+
+    function drawBackground() {
+      const grad = ctx.createLinearGradient(0, 0, 0, H());
+      grad.addColorStop(0, '#4dc9f6');
+      grad.addColorStop(0.6, '#87CEEB');
+      grad.addColorStop(1, '#b8e6f9');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, W(), H());
+
+      clouds.forEach(c => drawCloud(c.x, c.y, c.size));
+
+      const groundY = H() - GROUND_HEIGHT;
+      buildings.forEach(b => {
+        ctx.fillStyle = b.color;
+        ctx.fillRect(b.x, groundY - b.h, b.w, b.h);
+        ctx.fillStyle = 'rgba(255,255,200,0.4)';
+        for (let wy = groundY - b.h + 12; wy < groundY - 10; wy += 18) {
+          for (let wx = b.x + 8; wx < b.x + b.w - 8; wx += 14) {
+            ctx.fillRect(wx, wy, 6, 8);
+          }
+        }
+      });
+    }
+
+    function drawScore() {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 3;
+      ctx.font = `bold ${Math.min(48, W() * 0.1)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.strokeText(score, W() / 2, 60);
+      ctx.fillText(score, W() / 2, 60);
+    }
+
+    function drawBackButton() {
+      const bx = 10, by = 10, bw = 90, bh = 32;
+      ctx.fillStyle = 'rgba(0,0,0,0.3)';
+      ctx.beginPath();
+      ctx.roundRect(bx, by, bw, bh, 8);
+      ctx.fill();
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px Arial, sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('< ARCADE', bx + bw / 2, by + bh / 2);
+      ctx.textBaseline = 'alphabetic';
+    }
+
+    function drawMenu() {
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#2c3e50';
+      ctx.lineWidth = 4;
+      const titleSize = Math.min(52, W() * 0.11);
+      ctx.font = `bold ${titleSize}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.strokeText('FLAPPY PLANE', W() / 2, H() * 0.28);
+      ctx.fillText('FLAPPY PLANE', W() / 2, H() * 0.28);
+
+      const bobY = H() * 0.45 + Math.sin(frameCount * 0.05) * 12;
+      drawPlane(W() / 2, bobY, Math.sin(frameCount * 0.06) * 0.15);
+
+      const alpha = 0.5 + Math.sin(frameCount * 0.08) * 0.5;
+      ctx.fillStyle = `rgba(255,255,255,${alpha})`;
+      ctx.strokeStyle = `rgba(44,62,80,${alpha})`;
+      ctx.lineWidth = 2;
+      const tapSize = Math.min(24, W() * 0.05);
+      ctx.font = `bold ${tapSize}px Arial, sans-serif`;
+      ctx.strokeText('TAP TO PLAY', W() / 2, H() * 0.65);
+      ctx.fillText('TAP TO PLAY', W() / 2, H() * 0.65);
+
+      if (highScore > 0) {
+        ctx.fillStyle = 'rgba(255,255,255,0.8)';
+        ctx.strokeStyle = 'rgba(44,62,80,0.8)';
+        ctx.lineWidth = 2;
+        const hsSize = Math.min(18, W() * 0.04);
+        ctx.font = `bold ${hsSize}px Arial, sans-serif`;
+        ctx.strokeText(`BEST: ${highScore}`, W() / 2, H() * 0.72);
+        ctx.fillText(`BEST: ${highScore}`, W() / 2, H() * 0.72);
+      }
+
+      drawBackButton();
+    }
+
+    function drawGameOver() {
+      ctx.fillStyle = 'rgba(0,0,0,0.35)';
+      ctx.fillRect(0, 0, W(), H());
+
+      const panelW = Math.min(260, W() * 0.7);
+      const panelH = 180;
+      const px = (W() - panelW) / 2;
+      const py = H() * 0.3;
+      ctx.fillStyle = 'rgba(255,255,255,0.92)';
+      ctx.beginPath();
+      ctx.roundRect(px, py, panelW, panelH, 12);
+      ctx.fill();
+      ctx.strokeStyle = '#ccc';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      ctx.fillStyle = '#e74c3c';
+      ctx.font = `bold ${Math.min(28, W() * 0.06)}px Arial, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.fillText('GAME OVER', W() / 2, py + 40);
+
+      ctx.fillStyle = '#333';
+      ctx.font = `bold ${Math.min(20, W() * 0.045)}px Arial, sans-serif`;
+      ctx.fillText(`SCORE: ${score}`, W() / 2, py + 80);
+
+      ctx.fillStyle = '#666';
+      ctx.font = `${Math.min(18, W() * 0.04)}px Arial, sans-serif`;
+      ctx.fillText(`BEST: ${highScore}`, W() / 2, py + 110);
+
+      if (score === highScore && score > 0) {
+        ctx.fillStyle = '#f39c12';
+        ctx.font = `bold ${Math.min(16, W() * 0.035)}px Arial, sans-serif`;
+        ctx.fillText('NEW RECORD!', W() / 2, py + 135);
+      }
+
+      const alpha = 0.5 + Math.sin(frameCount * 0.08) * 0.5;
+      ctx.fillStyle = `rgba(100,100,100,${alpha})`;
+      ctx.font = `${Math.min(16, W() * 0.035)}px Arial, sans-serif`;
+      ctx.fillText('TAP TO CONTINUE', W() / 2, py + panelH + 30);
+    }
+
+    // Update
+    function update() {
+      frameCount++;
+
+      clouds.forEach(c => {
+        c.x -= c.speed;
+        if (c.x + c.size < -50) {
+          c.x = W() + 50;
+          c.y = 30 + Math.random() * 200;
+          c.size = 30 + Math.random() * 50;
+        }
+      });
+
+      const bSpeed = state === STATE.PLAYING ? W() * PIPE_SPEED_RATIO * 0.3 : 0.3;
+      buildings.forEach(b => { b.x -= bSpeed; });
+      if (buildings.length > 0 && buildings[0].x + buildings[0].w < -10) {
+        buildings.shift();
+        const last = buildings[buildings.length - 1];
+        const bw = 40 + Math.random() * 60;
+        const bh = 60 + Math.random() * 120;
+        buildings.push({
+          x: last.x + last.w + 5 + Math.random() * 20,
+          w: bw, h: bh,
+          color: `hsl(${200 + Math.random()*40}, 15%, ${55 + Math.random()*15}%)`
+        });
+      }
+
+      if (state !== STATE.PLAYING) return;
+
+      const pipeSpeed = W() * PIPE_SPEED_RATIO;
+      const gapH = H() * GAP_SIZE_RATIO;
+      const groundY = H() - GROUND_HEIGHT;
+
+      plane.vel += GRAVITY;
+      plane.y += plane.vel;
+      plane.rotation = Math.max(-0.5, Math.min(plane.vel * 0.06, 1.2));
+
+      pipeTimer++;
+      const spawnInterval = Math.max(70, Math.floor(W() / (pipeSpeed * 1.8)));
+      if (pipeTimer >= spawnInterval) {
+        pipeTimer = 0;
+        const minGapY = 60;
+        const maxGapY = groundY - gapH - 60;
+        const gapY = minGapY + Math.random() * (maxGapY - minGapY);
+        pipes.push({ x: W() + 10, gapY, gapH, scored: false });
+      }
+
+      pipes.forEach(p => { p.x -= pipeSpeed; });
+      pipes = pipes.filter(p => p.x + PIPE_WIDTH > -20);
+
+      pipes.forEach(p => {
+        if (!p.scored && p.x + PIPE_WIDTH < plane.x) {
+          p.scored = true;
+          score++;
+        }
+      });
+
+      if (plane.y + plane.height / 2 > groundY || plane.y - plane.height / 2 < 0) {
+        die();
+        return;
+      }
+
+      const planeL = plane.x - plane.width / 2 + 5;
+      const planeR = plane.x + plane.width / 2 - 5;
+      const planeT = plane.y - plane.height / 2 + 3;
+      const planeB = plane.y + plane.height / 2 - 3;
+      for (const p of pipes) {
+        const pipeL = p.x;
+        const pipeR = p.x + PIPE_WIDTH;
+        if (planeR > pipeL && planeL < pipeR) {
+          if (planeT < p.gapY || planeB > p.gapY + p.gapH) {
+            die();
+            return;
+          }
+        }
+      }
+    }
+
+    function die() {
+      state = STATE.GAME_OVER;
+      frameCount = 0;
+      if (score > highScore) {
+        highScore = score;
+        localStorage.setItem('flappyPlaneHigh', String(highScore));
+      }
+    }
+
+    // Render
+    function render() {
+      drawBackground();
+      drawGround();
+
+      if (state === STATE.PLAYING || state === STATE.GAME_OVER) {
+        pipes.forEach(p => drawPipe(p.x, p.gapY, p.gapH));
+        drawPlane(plane.x, plane.y, plane.rotation);
+        drawScore();
+      }
+
+      if (state === STATE.MENU) {
+        drawMenu();
+      } else if (state === STATE.GAME_OVER) {
+        drawGameOver();
+      }
+    }
+
+    // Main loop
+    function loop() {
+      update();
+      render();
+      requestAnimationFrame(loop);
+    }
+
+    loop();
+  </script>
+</body>
+</html>

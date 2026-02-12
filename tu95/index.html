@@ -53,8 +53,8 @@ function saveProg(){localStorage.setItem('tu95_prog',JSON.stringify(prog))}
 // ===== PLANE =====
 let P={};
 function resetPlane(m){
-  P={x:m.startRunway.x+50,y:m.startRunway.y+0.1,vx:0,vy:0,
-    pitch:0,pi:0,throttle:0,fuel:m.startFuel||100,
+  P={x:m.sr.x+50,y:m.sr.y+0.1,vx:0,vy:0,
+    pitch:0,pi:0,throttle:0,fuel:m.fuel||100,
     flaps:0,gear:true,ground:true,speed:0,crashed:false,landed:null};
 }
 
@@ -322,7 +322,7 @@ function uiTap(cx,cy){
   if(state===ST.MENU){
     if(cx<110&&cy<42){window.location.href='../';return}
     const lx=w/2-140,lw=280;
-    for(let i=0;i<M.length;i++){const ly=100+i*50;if(cx>lx&&cx<lx+lw&&cy>ly&&cy<ly+44&&i<prog.u){missionIdx=i;state=ST.BRIEF;return}}
+    for(let i=0;i<M.length;i++){const ly=88+i*50;if(cx>lx&&cx<lx+lw&&cy>ly&&cy<ly+44&&i<prog.u){missionIdx=i;state=ST.BRIEF;return}}
   }
   if(state===ST.BRIEF)startPlay();
   if(state===ST.DEBRIEF)state=ST.MENU;
@@ -702,7 +702,6 @@ function drawHUD(m){
   ctx.fillStyle='#8cf';ctx.fillText('FUEL',60,46);
   const fuelX=96,fuelW=panW-48;
   ctx.fillStyle='#1a1a1a';ctx.fillRect(fuelX,38,fuelW,8);
-  const fc=P.fuel>50?'#4a8':'P.fuel>25'?'#ca4':'#c44';
   ctx.fillStyle=P.fuel<10&&Math.sin(frameCount*0.2)>0?'#f00':P.fuel>50?'#4a8':P.fuel>25?'#ca4':'#c44';
   ctx.fillRect(fuelX,38,fuelW*P.fuel/100,8);
 

@@ -1,4 +1,4 @@
-const CACHE_NAME = 'plane-arcade-v2';
+const CACHE_NAME = 'plane-arcade-v3';
 const ASSETS = [
   './',
   './index.html',
@@ -25,8 +25,13 @@ self.addEventListener('activate', event => {
   self.clients.claim();
 });
 
+// Network-first: try fresh version, fall back to cache for offline
 self.addEventListener('fetch', event => {
   event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
+    fetch(event.request).then(resp => {
+      const clone = resp.clone();
+      caches.open(CACHE_NAME).then(c => c.put(event.request, clone));
+      return resp;
+    }).catch(() => caches.match(event.request))
   );
 });

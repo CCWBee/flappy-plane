@@ -341,7 +341,7 @@ function procKeys(){
 
 function startPlay(){
   const m=M[missionIdx];resetPlane(m);
-  cam.x=P.x;cam.y=80;bombs=[];expl=[];rolls=0;rollAcc=0;
+  cam.x=P.x;cam.y=0;bombs=[];expl=[];rolls=0;rollAcc=0;
   objs=m.obj.map(o=>({...o}));curObj=0;objDone=0;gameTime=0;
   tutMsg='';tutTime=0;tutFired={};floats=[];gustF=0;gustT=0;ltTimer=0;turbT=0;
   rain=[];if(m.wx==='storm')for(let i=0;i<120;i++)rain.push({x:Math.random()*2000,y:Math.random()*800});
@@ -937,7 +937,8 @@ function update(dt){
   frameCount++;const m=M[missionIdx];
   if(state===ST.PLAY){
     gameTime+=dt;procKeys();physics(dt,m);checkObj(m);if(m.tut)checkTut(m);
-    cam.x+=(P.x+P.vx*0.5-cam.x)*0.05;cam.y+=(P.y+60-cam.y)*0.04;
+    const lx=Math.min(1,8*dt),ly=Math.min(1,5*dt);
+    cam.x+=(P.x+P.vx*0.8-cam.x)*lx;cam.y+=(P.y*0.7-cam.y)*ly;
     if(tutTime>0)tutTime-=dt;
     expl.forEach(e=>{e.l-=dt});expl=expl.filter(e=>e.l>0);
   }

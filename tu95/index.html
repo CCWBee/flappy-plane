@@ -56,7 +56,7 @@ let P={};
 function resetPlane(m){
   P={x:m.sr.x+50,y:m.sr.y,vx:0,vy:0,
     pitch:0,pi:0,throttle:0,fuel:m.fuel||100,
-    flaps:0,gear:true,ground:true,speed:0,crashed:false,landed:null};
+    flaps:0,gear:true,ground:true,groundTime:1,speed:0,crashed:false,landed:null};
 }
 
 let cam={x:0,y:0},bombs=[],expl=[],
@@ -176,10 +176,11 @@ function physics(dt,m){
 
   // Ground handling
   if(P.ground){
+    P.groundTime+=dt;
     if(P.pitch<0)P.pitch=0;
-    // Check takeoff: lift exceeds weight with enough speed
-    if(lift>GRAVITY*1.05&&P.speed>15){
-      P.ground=false;P.vy=1.5;P.y+=0.5;
+    // Only allow takeoff after 0.5s on ground (prevents landing bounce)
+    if(lift>GRAVITY*1.05&&P.speed>15&&P.groundTime>0.5){
+      P.ground=false;P.groundTime=0;P.vy=1.5;P.y+=0.5;
     }else{
       ay=0;P.vy=0;
       if(P.speed>0.5)ax-=3*(P.vx/P.speed);
@@ -200,12 +201,15 @@ function physics(dt,m){
   // Ground collision
   const gh=ghAt(P.x,m.terr);
   if(P.y<=gh){
+    const landVy=P.vy; // store before zeroing for landing quality
     const osr=onRwy(P.x,m.sr),oer=onRwy(P.x,m.er);
     if((osr||oer)&&P.gear&&P.vy>-3.5&&Math.abs(P.pitch)<0.35){
-      P.y=gh;P.vy=0;P.ground=true;
-      if(!P.landed&&P.speed<5&&P.x>m.sr.ex)P.landed={vy:P.vy,rw:oer?'end':'start'};
+      P.y=gh;P.vy=0;
+      if(!P.ground)P.groundTime=0; // just touched down
+      P.ground=true;
+      if(!P.landed&&P.speed<5&&P.x>m.sr.ex)P.landed={vy:landVy,rw:oer?'end':'start'};
     }else if(P.y<gh-0.5||(P.y<=gh&&!P.ground)){crash();return}
-    else{P.y=gh;P.vy=0;P.ground=true}
+    else{P.y=gh;P.vy=0;if(!P.ground)P.groundTime=0;P.ground=true}
   }else P.ground=false;
 
   if(P.y>800){P.y=800;P.vy=Math.min(P.vy,0)}
@@ -309,19 +313,20 @@ function zone(cx,cy){
   if(state!==ST.PLAY&&state!==ST.PAUSE)return Z.UI;
   // Throttle: left 50px strip
   if(cx<50)return Z.THR;
-  // Pitch: right side bottom. Buttons are compact ovals
-  const bS=Math.min(56,h*0.16); // button size scales with screen
-  const pad=8;
+  // Must match drawBtns exactly
+  const pad=6;
+  const bS=Math.min(52,h*0.15);
+  // Pitch buttons - bottom right
   const puX=w-pad-bS,puY=h-pad-bS;
-  const pdX=w-pad-bS*2-6,pdY=puY;
-  if(cy>puY&&cx>pdX){return cx>puX?Z.PU:Z.PD}
-  // F/G/B: compact row bottom-left
-  const sbS=Math.min(44,h*0.13);
-  const sbY=h-pad-sbS;
-  if(cy>sbY&&cx>=52){
-    if(cx<52+sbS+2)return Z.FL;
-    if(cx<52+(sbS+4)*2)return Z.GR;
-    if(cx<52+(sbS+4)*3)return Z.BM;
+  const pdX=w-pad-bS*2-4,pdY=puY;
+  if(cy>pdY&&cx>pdX){return cx>puX?Z.PU:Z.PD}
+  // F/G/B: bottom-left pills
+  const sW=Math.min(40,bS*0.78),sH=Math.min(36,bS*0.7);
+  const sY=h-pad-sH;
+  if(cy>sY&&cx>=48){
+    if(cx<48+sW+2)return Z.FL;
+    if(cx<48+(sW+3)*2)return Z.GR;
+    if(cx<48+(sW+3)*3)return Z.BM;
   }
   // Pause: top-right
   if(cx>w-44&&cy<36)return Z.UI;
@@ -972,6 +977,9 @@ function update(dt){
     const lx=Math.min(1,8*dt),ly=Math.min(1,5*dt);
     cam.x+=(P.x+P.vx*0.8-cam.x)*lx;cam.y+=(P.y*0.7-cam.y)*ly;
     if(tutTime>0)tutTime-=dt;
+  }
+  // Tick explosions in both PLAY and CRASH states
+  if(state===ST.PLAY||state===ST.CRASH){
     expl.forEach(e=>{e.l-=dt});expl=expl.filter(e=>e.l>0);
   }
 }
@@ -985,9 +993,17 @@ function render(){
   // Game world
   drawSky(m);drawClouds(m);drawFarMtns(m);drawMidHills(m);drawTerrain(m);
   drawRwy(m.sr,m);drawRwy(m.er,m);drawThings(m);drawBombs();drawExpl();
-  if(state!==ST.CRASH&&curObj<objs.length){const o=objs[curObj];if(o.t==='wp')drawWP(o)}
+  if(state!==ST.CRASH&&curObj<objs.length){const o=objs[curObj];if(o.t==='wp'||o.t==='bomb')drawWP(o)}
   if(!P.crashed)drawPlane();
   const dt=1/60;drawWeather(m,dt);drawFloats(dt);drawHUD(m);
+  if(state===ST.CRASH){
+    const cw=W(),ch=H();
+    ctx.fillStyle='rgba(200,30,0,0.15)';ctx.fillRect(0,0,cw,ch);
+    if(Math.sin(frameCount*0.15)>0){
+      ctx.fillStyle='rgba(255,60,30,0.9)';ctx.font=`bold ${Math.min(28,cw*0.05)}px Arial`;
+      ctx.textAlign='center';ctx.fillText('CRASHED!',cw/2,ch*0.4);
+    }
+  }
   if(state===ST.PAUSE)drawPause();
 }
 

@@ -202,14 +202,24 @@ function physics(dt,m){
   const gh=ghAt(P.x,m.terr);
   if(P.y<=gh){
     const landVy=P.vy; // store before zeroing for landing quality
-    const osr=onRwy(P.x,m.sr),oer=onRwy(P.x,m.er);
-    if((osr||oer)&&P.gear&&P.vy>-3.5&&Math.abs(P.pitch)<0.35){
+    if(P.ground){
+      // Already on ground - stay on surface (taxiing, rolling)
       P.y=gh;P.vy=0;
-      if(!P.ground)P.groundTime=0; // just touched down
-      P.ground=true;
-      if(!P.landed&&P.speed<5&&P.x>m.sr.ex)P.landed={vy:landVy,rw:oer?'end':'start'};
-    }else if(P.y<gh-0.5||(P.y<=gh&&!P.ground)){crash();return}
-    else{P.y=gh;P.vy=0;if(!P.ground)P.groundTime=0;P.ground=true}
+    }else{
+      // Just hit ground from the air - check landing conditions
+      const slope=Math.abs(ghAt(P.x+10,m.terr)-ghAt(P.x-10,m.terr))/20;
+      const canLand=P.gear&&P.vy>-4.5&&Math.abs(P.pitch)<0.4&&slope<0.25;
+      if(canLand){
+        P.y=gh;P.vy=0;P.groundTime=0;P.ground=true;
+        // Store touchdown vy for landing quality scoring
+        if(!P.landed)P._touchVy=landVy;
+      }else{crash();return}
+    }
+    // Track landing quality once stopped on a runway
+    if(!P.landed&&P.ground&&P.speed<5){
+      const osr=onRwy(P.x,m.sr),oer=onRwy(P.x,m.er);
+      if(osr||oer)P.landed={vy:P._touchVy||0,rw:oer?'end':'start'};
+    }
   }else P.ground=false;
 
   if(P.y>800){P.y=800;P.vy=Math.min(P.vy,0)}
@@ -846,7 +856,9 @@ function drawBtns(m){
 
 function drawWarn(m){
   const spd=P.speed*1.94,w=W(),h=H();
-  if(spd<STALL_SPEED*1.94*0.9&&!P.ground&&P.speed>2){
+  // Effective stall speed accounts for flap lift multiplier
+  const effStall=STALL_SPEED/Math.sqrt(FLAP_LIFT[P.flaps]);
+  if(P.speed<effStall*0.9&&!P.ground&&P.speed>2){
     if(Math.sin(frameCount*0.15)>0){ctx.fillStyle='rgba(255,30,30,0.85)';ctx.font=`bold ${Math.min(22,w*0.04)}px Arial`;ctx.textAlign='center';ctx.fillText('STALL',w/2,h*0.38)}}
   const gh=ghAt(P.x,m.terr);
   if(P.y-gh<20&&!P.ground&&P.vy<0){if(Math.sin(frameCount*0.15)>0){ctx.fillStyle='rgba(255,120,0,0.85)';ctx.font=`bold ${Math.min(20,w*0.035)}px Arial`;ctx.textAlign='center';ctx.fillText('PULL UP',w/2,h*0.44)}}

@@ -38,9 +38,10 @@ function PPM(){return Math.max(1,W()/500)}
 const HORIZON=0.82;
 
 // ===== CONSTANTS =====
-const GRAVITY=9.8,MAX_THRUST=48,LIFT_COEFF=0.0055,DRAG_COEFF=0.0018,
-  PITCH_SPEED=1.8,STALL_SPEED=28,FLAP_LIFT=[1,1.6,2.2],FLAP_DRAG=[1,1.3,1.8],
-  GEAR_DRAG=0.0007,FUEL_BURN=0.08,FLAP_NAMES=['UP','T/O','LDG'];
+const GRAVITY=9.8,MAX_THRUST=20,LIFT_COEFF=0.04,DRAG_COEFF=0.002,
+  PITCH_SPEED=1.8,STALL_SPEED=28,MAX_AOA=0.35,MAX_SPEED=120,
+  FLAP_LIFT=[1,1.6,2.2],FLAP_DRAG=[1,1.3,1.8],
+  GEAR_DRAG=0.001,FUEL_BURN=0.06,FLAP_NAMES=['UP','T/O','LDG'];
 
 // ===== STATES =====
 const ST={MENU:0,BRIEF:1,PLAY:2,CRASH:3,DEBRIEF:4,PAUSE:5};
@@ -53,7 +54,7 @@ function saveProg(){localStorage.setItem('tu95_prog',JSON.stringify(prog))}
 // ===== PLANE =====
 let P={};
 function resetPlane(m){
-  P={x:m.sr.x+50,y:m.sr.y+0.1,vx:0,vy:0,
+  P={x:m.sr.x+50,y:m.sr.y,vx:0,vy:0,
     pitch:0,pi:0,throttle:0,fuel:m.fuel||100,
     flaps:0,gear:true,ground:true,speed:0,crashed:false,landed:null};
 }
@@ -135,33 +136,64 @@ function w2s(wx,wy){
 // ===== PHYSICS =====
 function physics(dt,m){
   if(dt>0.05)dt=0.05;
-  let ax=MAX_THRUST*P.throttle*Math.cos(P.pitch);
-  let ay=MAX_THRUST*P.throttle*Math.sin(P.pitch);
 
-  // Lift
-  let lift=LIFT_COEFF*P.speed*P.speed*FLAP_LIFT[P.flaps];
-  if(P.speed<STALL_SPEED){const s=P.speed/STALL_SPEED;lift*=s*s}
-  const la=P.pitch+Math.PI/2;
-  ay+=lift*Math.sin(la); ax+=lift*Math.cos(la);
+  // Velocity angle and angle of attack
+  const velAng=P.speed>2?Math.atan2(P.vy,P.vx):0;
+  let aoa=P.ground?Math.max(0,P.pitch):(P.pitch-velAng);
+  // Normalize AoA to [-PI,PI]
+  if(aoa>Math.PI)aoa-=2*Math.PI;if(aoa<-Math.PI)aoa+=2*Math.PI;
 
-  // Drag
+  // Stall: beyond MAX_AOA, lift drops sharply
+  const clampAoA=Math.max(-MAX_AOA,Math.min(MAX_AOA,aoa));
+  const stallMul=Math.abs(aoa)>MAX_AOA?0.25:1;
+
+  // Lift: proportional to AoA and speed², perpendicular to velocity
+  const cl=LIFT_COEFF*clampAoA*stallMul*FLAP_LIFT[P.flaps];
+  const lift=cl*P.speed*P.speed;
+  const liftAng=velAng+Math.PI/2;
+
+  // Drag: opposing velocity, with induced drag from AoA
   let dc=DRAG_COEFF*FLAP_DRAG[P.flaps];
   if(P.gear)dc+=GEAR_DRAG;
+  dc+=Math.abs(clampAoA)*0.003;
   const drag=dc*P.speed*P.speed;
-  if(P.speed>0.5){ax-=drag*(P.vx/P.speed);ay-=drag*(P.vy/P.speed)}
 
-  ay-=GRAVITY;
+  // Thrust along pitch direction
+  const thrust=MAX_THRUST*P.throttle;
+
+  // Sum forces
+  let ax=thrust*Math.cos(P.pitch);
+  let ay=thrust*Math.sin(P.pitch)-GRAVITY;
+
+  if(P.speed>1){
+    ax+=lift*Math.cos(liftAng)-drag*(P.vx/P.speed);
+    ay+=lift*Math.sin(liftAng)-drag*(P.vy/P.speed);
+  }
 
   // Weather
   if(m.wx==='windy'||m.wx==='storm')ay+=gustF;
-  if(m.wx==='storm'&&!P.ground){turbT-=dt;if(turbT<=0){turbT=0.5+Math.random()*1.5;P.pi+=(Math.random()-0.5)*0.6}}
+  if(m.wx==='storm'&&!P.ground){turbT-=dt;if(turbT<=0){turbT=0.5+Math.random()*1.5;P.pi+=(Math.random()-0.5)*0.4}}
 
-  // Ground
-  if(P.ground){ay=0;P.vy=0;if(P.speed>0.5)ax-=2*(P.vx/P.speed);if(P.pitch<0)P.pitch=0}
+  // Ground handling
+  if(P.ground){
+    if(P.pitch<0)P.pitch=0;
+    // Check takeoff: lift exceeds weight with enough speed
+    if(lift>GRAVITY*1.05&&P.speed>15){
+      P.ground=false;P.vy=1.5;P.y+=0.5;
+    }else{
+      ay=0;P.vy=0;
+      if(P.speed>0.5)ax-=3*(P.vx/P.speed);
+    }
+  }
 
+  // Integration
   P.vx+=ax*dt;P.vy+=ay*dt;P.x+=P.vx*dt;P.y+=P.vy*dt;
   P.speed=Math.sqrt(P.vx*P.vx+P.vy*P.vy);
 
+  // Speed cap
+  if(P.speed>MAX_SPEED){const s=MAX_SPEED/P.speed;P.vx*=s;P.vy*=s;P.speed=MAX_SPEED}
+
+  // Pitch
   P.pitch+=P.pi*PITCH_SPEED*dt;
   P.pitch=Math.max(-0.8,Math.min(0.8,P.pitch));
 

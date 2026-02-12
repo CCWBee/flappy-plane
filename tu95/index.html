@@ -183,7 +183,7 @@ function physics(dt,m){
       P.ground=false;P.groundTime=0;P.vy=1.5;P.y+=0.5;
     }else{
       ay=0;P.vy=0;
-      if(P.speed>0.5)ax-=3*(P.vx/P.speed);
+      if(P.speed>0.5)ax-=5*(P.vx/P.speed);
     }
   }
 
@@ -215,8 +215,8 @@ function physics(dt,m){
         if(!P.landed)P._touchVy=landVy;
       }else{crash();return}
     }
-    // Track landing quality once stopped on a runway
-    if(!P.landed&&P.ground&&P.speed<5){
+    // Track landing quality once slowed down on a runway
+    if(!P.landed&&P.ground&&P.speed<15){
       const osr=onRwy(P.x,m.sr),oer=onRwy(P.x,m.er);
       if(osr||oer)P.landed={vy:P._touchVy||0,rw:oer?'end':'start'};
     }
@@ -249,8 +249,8 @@ function checkObj(m){
   if(curObj>=objs.length)return;
   const o=objs[curObj];let met=false;
   if(o.t==='alt')met=P.y*3.28>=o.v;
-  else if(o.t==='wp'){const d=Math.sqrt((P.x-o.x)**2+(P.y-o.y)**2);met=d<60}
-  else if(o.t==='land'){if(P.ground&&P.speed<5){met=o.rw==='end'?onRwy(P.x,m.er):onRwy(P.x,m.sr)}}
+  else if(o.t==='wp'){const dx=Math.abs(P.x-o.x),dy=Math.abs(P.y-o.y);met=dx<120&&dy<150}
+  else if(o.t==='land'){if(P.ground&&P.speed<15){met=o.rw==='end'?onRwy(P.x,m.er):onRwy(P.x,m.sr)}}
   else if(o.t==='bomb'){for(const e of expl){const d=Math.sqrt((e.x-o.x)**2+(e.y-(o.y||ghAt(o.x,m.terr)))**2);if(d<o.r){met=true;break}}}
   if(met){curObj++;objDone++;floats.push({txt:'OBJECTIVE COMPLETE',x:P.x,y:P.y+40,l:2});if(curObj>=objs.length)setTimeout(()=>showEnd(true),1500)}
 }
@@ -760,14 +760,22 @@ function drawHUD(m){
   ctx.fillStyle='#aaa';ctx.fillText('G',120,60);
   ctx.fillStyle='#aaa';ctx.fillText(`${Math.floor(P.throttle*100)}%`,140,60);
 
-  // -- Mission info: top-right, subtle --
-  const miW=Math.min(180,w*0.3);
-  ctx.fillStyle='rgba(10,15,25,0.6)';
-  ctx.beginPath();ctx.roundRect(w-miW-6,4,miW,38,5);ctx.fill();
+  // -- Mission info: top-right with objective progress --
+  const miW=Math.min(200,w*0.34);
+  ctx.fillStyle='rgba(10,15,25,0.7)';
+  ctx.beginPath();ctx.roundRect(w-miW-6,4,miW,52,5);ctx.fill();
+  ctx.strokeStyle='rgba(100,140,180,0.3)';ctx.lineWidth=0.5;ctx.stroke();
   ctx.fillStyle='#da6';ctx.font=`bold ${fs-1}px Arial`;ctx.textAlign='right';
   ctx.fillText(`M${m.id}: ${m.name.toUpperCase()}`,w-12,17);
   ctx.fillStyle='#bbb';ctx.font=`${fs-1}px Arial`;
   ctx.fillText(curObj<objs.length?objs[curObj].txt:'All objectives complete!',w-12,32);
+  // Objective progress dots
+  const dotR=4,dotGap=12,dotTotal=objs.length;
+  const dotStartX=w-miW-6+(miW-dotTotal*dotGap)/2+dotGap/2;
+  for(let i=0;i<dotTotal;i++){
+    ctx.fillStyle=i<curObj?'#4a8':i===curObj?'#da6':'#334';
+    ctx.beginPath();ctx.arc(dotStartX+i*dotGap,46,dotR,0,Math.PI*2);ctx.fill();
+  }
 
   // -- Throttle bar: thin strip on left edge --
   const tX=4,tY=20,tW=38,tH=h-60;
